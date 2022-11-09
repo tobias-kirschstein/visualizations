@@ -1,0 +1,6 @@
+elias==0.1.0
+numpy
+opencv-contrib-python
+scipy
+tyro
+trimesh==3.16.0

@@ -1,12 +1,12 @@
 # Installation
 
 Run in the repository root:
-> pip install visualizations -e .
+> pip install -e .
 
 Also install the dependencies in blenderproc:
 > python scripts/install_blenderproc.py
 
-
+ 
 
 
 ### Blenderproc Debugging

@@ -8,7 +8,7 @@ import numpy as np
 import trimesh
 from elias.util.io import load_img
 
-from build.lib.visualizations.env import REPO_ROOT
+from visualizations.env import REPO_ROOT
 
 
 def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],

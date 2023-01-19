@@ -23,11 +23,13 @@ import bpy
 from visualizations.math.matrix import Pose
 
 LAYOUT_TYPE: Literal['SQUARE', 'ROW'] = 'ROW'
+ROW_STACKED = False  # If true, heads will be rendered perspectively 2x2 instead of 4 in a row
 
 NPHM_ALL_SCANS_PATH = "D:/Projects/NPHM/data/best_scans"
+CHOSEN_SCANS = ["angry_m", "barbara_smile_hair", "evgeni_brow_raiser", "moutWeird_f", "id73_schmollen_f", "id29_underweight_interesting_m", "david_smile"]
 
 BODY_CROPY = -17  # Vertices with y-coordinates below that will be cropped
-N_HEADS = 4  # How many heads the teaser should contain
+N_HEADS = 2  # How many heads the teaser should contain
 MAX_SAMPLES_PER_PIXEL = 20  # Ray-tracing render quality. Higher is better, but slower
 
 RESOLUTION = 1024
@@ -38,11 +40,10 @@ SQUARE_OFFSET_Y = 1.2 * 2
 SQUARE_CAMERA_DISTANCE = 3
 
 ROW_IMAGE_WIDTH = RESOLUTION
-ROW_IMAGE_HEIGHT = int(RESOLUTION / 2)
+ROW_IMAGE_HEIGHT = int(0.6 * RESOLUTION)
 ROW_OFFSET_X = 1.2
 ROW_OFFSET_Y = 1.2 * 2 # Only for stacked
 ROW_CAMERA_DISTANCE = 7
-ROW_STACKED = True  # If true, heads will be rendered perspectively 2x2 instead of 4 in a row
 ROW_IMAGE_HEIGHT_STACKED = RESOLUTION
 ROW_IMAGE_WIDTH_STACKED = int(3/4 * RESOLUTION)
 ROW_OFFSET_X_STACKED = 1.4
@@ -96,7 +97,8 @@ material = create_principled_bsdf_material("head", color=(0.8, 0.9, 1), metallic
 
 head_meshes = []
 nrows = ceil(sqrt(N_HEADS))
-for i_head, mesh_file in enumerate(Path(NPHM_ALL_SCANS_PATH).iterdir()):
+for i_head, mesh_name in enumerate(CHOSEN_SCANS):
+    mesh_file = f"{NPHM_ALL_SCANS_PATH}/{mesh_name}.ply"
     head_mesh = import_ply(mesh_file, scale=1 / 12.5)
 
     delete_vertices(head_mesh, lambda v: v.co.y < BODY_CROPY)

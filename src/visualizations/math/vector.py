@@ -134,6 +134,13 @@ class Vec2(np.ndarray):
     def normalize(self) -> 'Vec2':
         return self / self.length()
 
+    def rotate(self, angle: float) -> 'Vec2':
+        new_x = self.x * math.cos(angle) - self.y * math.sin(angle)
+        new_y = self.x * math.sin(angle) + self.y * math.cos(angle)
+        self.x = new_x
+        self.y = new_y
+        return self
+
 
 class Vec3(np.ndarray):
     def __new__(cls,

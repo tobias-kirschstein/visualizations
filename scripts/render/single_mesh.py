@@ -1,5 +1,6 @@
 import blenderproc as bproc
 # bproc import has to stay on top!
+import numpy as np
 import tyro
 
 from elias.util import ensure_directory_exists_for_file
@@ -11,9 +12,10 @@ from visualizations.blender.io import import_ply
 from visualizations.blender.shading import create_principled_bsdf_material, \
     apply_material_to_obj
 from typing import Optional, Union
+from math import cos, sin
 import bpy
 
-from visualizations.math.matrix import Pose
+from visualizations.math.matrix import Pose, Intrinsics
 
 MAX_SAMPLES_PER_PIXEL = 20  # Ray-tracing render quality. Higher is better, but slower
 
@@ -22,9 +24,23 @@ def main(input_path: Positional[str],
          output_path: Positional[str],
          image_width: int = 1024,
          image_height: int = 1024,
-         camera_distance: int = 3,
+         camera_distance: float = 3.,
+         angle: float = 0,
          crop_y_min: Optional[float] = None,
-         scale: Optional[Union[float, str]] = None):
+         scale: Optional[Union[float, str]] = None,
+         location_x: float = 0,
+         location_y: float = 0,
+         location_z: float = 0,
+         light_x: float = 1.6,
+         light_y: float = 2.2,
+         light_z: float = 8.2,
+         color_r: float = 0.8,
+         color_g: float = 0.9,
+         color_b: float = 1,
+         fov: float = 0.6911110281944275,
+         use_orthographic_cam: bool = True,
+         mirror_light_x: bool= False,
+         mirror_light_z: bool = False):
     """
     :param input_path:
         Path to the .ply file that shall be rendered. Choose "pipe" if mesh is directly input instead of read from file
@@ -36,10 +52,40 @@ def main(input_path: Positional[str],
         render height
     :param camera_distance:
         distance (in Blender meters) of the camera in z-direction from the origin
+    :param fov:
+        field of view of camera
+    :param use_orthographic_cam:
+        whether to use an orthographic projection instead of perspective
+    :param angle:
+        angle of the camera (in radians) around the y axis. Useful for rotating around the object
     :param crop_y_min:
         If specifies, crops all vertices with smaller y coordinate from the mesh before rendering
     :param scale:
         Scales the mesh before rendering
+    :param location_x:
+        Optional x offset for mesh (applied after scaling)
+    :param location_y:
+        Optional y offset for mesh (applied after scaling)
+    :param location_z:
+        Optional z offset for mesh (applied after scaling)
+
+    :param light_x:
+        x coordinate for light
+    :param light_y:
+        y coordinate for light
+    :param light_z:
+        How far the light should be away
+    :param mirror_light_x:
+        Creates duplicate(s) of the light source(s) that is mirrored in x-direction (flipped at the y-z plane)
+    :param mirror_light_z:
+        Creates duplicate(s) of the light source(s) that is mirrored in z-direction (flipped at the x-y plane)
+
+    :param color_r:
+        red channel for mesh
+    :param color_g:
+        green channel for mesh
+    :param color_b:
+        blue channel for mesh
     :return:
     """
 
@@ -64,9 +110,15 @@ def main(input_path: Positional[str],
     # ----------------------------------------------------------
     cam_to_world = Pose()
 
-    bpy.context.scene.camera.data.type = "ORTHO"
-    cam_to_world.move(z=camera_distance)
+    # Assume y is up-direction
+    if use_orthographic_cam:
+        bpy.context.scene.camera.data.type = "ORTHO"
+    cam_z = camera_distance * cos(angle)
+    cam_x = camera_distance * sin(angle)
+    cam_to_world.move(x=cam_x, z=cam_z)
+    cam_to_world.rotate_euler('xyz', euler_y=angle)
     bproc.camera.set_resolution(image_width, image_height)
+    bproc.camera.set_intrinsics_from_blender_params(fov, lens_unit='FOV')
 
     bproc.camera.add_camera_pose(cam_to_world)
 
@@ -74,18 +126,42 @@ def main(input_path: Positional[str],
     # Lighting Setup
     # ----------------------------------------------------------
 
+    energy_front = 500 if mirror_light_x else 1000
     light = bproc.types.Light()
-    light.set_location([1.6, 2.2, 8.2])
+    light.set_location([light_x, light_y, light_z])
     light.set_type("AREA")
-    light.set_energy(1000)  # Energy is Watts
+    light.set_energy(energy_front)  # Energy is Watts
     light.blender_obj.data.shadow_soft_size = 2
+
+    if mirror_light_x:
+        light_mirrored_x = bproc.types.Light()
+        light_mirrored_x.set_location([-light_x, light_y, light_z])
+        light_mirrored_x.set_type("AREA")
+        light_mirrored_x.set_energy(energy_front)  # Energy is Watts
+        light_mirrored_x.blender_obj.data.shadow_soft_size = 2
+
+    if mirror_light_z:
+        energy_back = 1000 if mirror_light_x else 2000
+        light_mirrored_z = bproc.types.Light()
+        light_mirrored_z.set_location([-2 * light_x, light_y, -light_z])
+        light_mirrored_z.set_energy(energy_back)  # Energy is Watts
+        light_mirrored_z.blender_obj.data.shadow_soft_size = 2
+
+        if mirror_light_x:
+            light_mirrored_x_z = bproc.types.Light()
+            light_mirrored_x_z.set_location([2 * light_x, light_y, -light_z])
+            light_mirrored_x_z.set_energy(energy_back)  # Energy is Watts
+            light_mirrored_x_z.blender_obj.data.shadow_soft_size = 2
 
     # ----------------------------------------------------------
     # Load Meshes
     # ----------------------------------------------------------
 
-    material = create_principled_bsdf_material("metallic", color=(0.8, 0.9, 1), metallic=0.9, roughness=0.7)
+    material = create_principled_bsdf_material("metallic",
+                                               color=(color_r, color_g, color_b),
+                                               metallic=0.9, roughness=0.7)
     obj = import_ply(input_path, scale=scale)
+    obj.location = (location_x, location_y, location_z)
 
     if crop_y_min is not None:
         delete_vertices(obj, lambda v: v.co.y < crop_y_min)

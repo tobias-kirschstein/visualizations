@@ -1,0 +1,1 @@
+NPHM_DATA_PATH = "D:/Projects/NPHM/data"

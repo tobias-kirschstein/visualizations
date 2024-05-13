@@ -16,24 +16,45 @@ from visualizations.env_nphm import NPHM_DATA_PATH
 from visualizations.math.vector import Vec2
 from visualizations.render.single_mesh import render_single_mesh
 
-NPHM_RESULTS_FOLDER = f"{NPHM_DATA_PATH}/results_identity"
-METHODS_ORDER = ['PC', 'BFM', 'FLAME', 'NPM', 'NPHM', 'GT']
-ERROR_MASK_MESH_FOLDER = [None, None, None, "_old", None, None]  # If face mesh for error mask differs from high-res mesh
+NPHM_MAIN_RESULTS_FOLDER = f"{NPHM_DATA_PATH}/results_identity"
+NPHM_SINGLE_VIEW_RESULTS_FOLDER = f"{NPHM_DATA_PATH}/results_joint"
 
+METHODS_ORDER = ['PC', 'FLAME', 'localPCA', 'imface_star', 'NPM', 'NPHM', 'GT']
+# If face mesh for error mask differs from high-res mesh
+ERROR_MASK_MESH_FOLDER = [None, None, None, None, None, None, None]
+GRID_LINE_X_ADJUSTMENTS = [0.05, 0.02, 0.05, 0.02, 0.02, 0]  # Manual adjustments for vertical grid lines. Measured in percentage of cell width
+
+SUPPLEMENTAL_METHODS_ORDER = ['PC', 'BFM', 'globalPCA', 'ImFace', 'imface_star', 'NPHM', 'GT']
+SUPPLEMENTAL_ERROR_MASK_MESH_FOLDER = [None, None, None, None, None, None, None]
+SUPPLEMENTAL_GRID_LINE_X_ADJUSTMENTS = [0.05, 0.02, 0.02, 0.02, 0.02, 0]
+
+SINGLE_VIEW_METHODS_ORDER = ['PC', 'imface', 'imface_star', 'NPM', 'NPHM', 'GT']
+SINGLE_VIEW_GRID_LINE_X_ADJUSTMENTS = [0.05, 0.02, 0.02, 0.02, 0]
+
+USE_SUPPLEMENTAL = False
+USE_SINGLE_VIEW = True
 USE_BLENDER = True
 
-N_MAX_FITTINGS = 4
+NPHM_RESULTS_FOLDER = NPHM_SINGLE_VIEW_RESULTS_FOLDER if USE_SINGLE_VIEW else NPHM_MAIN_RESULTS_FOLDER
+
+# N_MAX_FITTINGS = 4
+N_MAX_FITTINGS = 9
 
 # CHOSEN_FITTINGS = [12, 17]  # 5, 13,
-CHOSEN_FITTINGS = [5, 12, 13, 17]
+# CHOSEN_FITTINGS = [5, 12, 13, 17]
+MAIN_CHOSEN_FITTINGS = [0, 1, 11, 12] #  andrei assia, id97, id98
+SINGLE_VIEW_CHOSEN_FITTINGS = [0, 2, 4, 7]
+
+CHOSEN_FITTINGS = SINGLE_VIEW_CHOSEN_FITTINGS if USE_SINGLE_VIEW else MAIN_CHOSEN_FITTINGS
+
 RESOLUTION = 2048
 IMAGE_WIDTH = int(0.6 * RESOLUTION)
 IMAGE_HEIGHT = RESOLUTION
 
 FIGURE_WIDTH = 2048
-STRIPES_SMALL = 2
-STRIPES_WIDE = 3
-PADDING_X = 0.02  # Padding between columns
+STRIPES_SMALL = 1.5  # Relative width of first column (pointcloud observation)
+STRIPES_WIDE = 3  # Relative width of all other cells
+PADDING_X = 0  # Padding between columns
 PADDING_Y = -0.15  # Padding between rows
 GLOBAL_OFFSET_Y = -0.02  # Move everything up a bit
 
@@ -43,22 +64,44 @@ CROP_EYE_RIGHT = [0.53, 0.4, 0.2]
 CROP_NOSE = [0.4, 0.45, 0.2]
 CROP_MOUTH = [0.4, 0.59, 0.2]
 CROP_CHIN = [0.4, 0.65, 0.2]
+CROP_MOUTH_RIGHT = [0.5, 0.55, 0.2]
+CROP_MOUTH_MORE_RIGHT = [0.55, 0.6, 0.2]
+CROP_MOUTH_LEFT = [0.27, 0.55, 0.2]
+CROP_BEARD = [0.4, 0.55, 0.2]
 
 # CROPS = [
 #     CROP_EYE_RIGHT,
 #     CROP_EYE_RIGHT
 # ]
-CROPS = [
-    CROP_MOUTH,
+# CROPS = [
+#     CROP_MOUTH,
+#     CROP_EYE_RIGHT,
+#     CROP_EYE_LEFT,
+#     CROP_EYE_RIGHT,
+# ]
+MAIN_CROPS = [
+    CROP_EYE_LEFT,
+    CROP_MOUTH_RIGHT,
+    CROP_EYE_RIGHT,
+    CROP_BEARD,
+]
+SINGLE_VIEW_CROPS = [
+    CROP_MOUTH_MORE_RIGHT,
     CROP_EYE_RIGHT,
     CROP_EYE_LEFT,
-    CROP_EYE_RIGHT,
+    CROP_MOUTH_LEFT
 ]
+CROPS = SINGLE_VIEW_CROPS if USE_SINGLE_VIEW else MAIN_CROPS
+
 ERROR_NORMALIZATION = 0.020
 LINE_COLOR = (0, 0, 1)
+LINE_WIDTH_GRID = 2
+LINE_WIDTH_CROPS = 1.5
 CMAP_OFFSET = 0.05  # Ignore first percentages of cmap to get lighter colors for better visual inspection
 CROPOUT_SIZE = 1.4
 ERROR_MASK_SIZE = 1.2
+COL_ERROR_BAR = 3  # In which column the error bar should be plotted
+COLOR_BAR_HEIGHT = 0.9 * 0.5  # Percentage of cell height
 
 
 def load_mesh(method: str, fitting: str, folder_suffix: str = "") -> Union[trimesh.Trimesh, np.ndarray]:
@@ -74,6 +117,8 @@ def load_mesh(method: str, fitting: str, folder_suffix: str = "") -> Union[trime
                 mesh_path = f"{NPHM_RESULTS_FOLDER}/{method}/mesh_{fitting}.ply"
         else:
             mesh_path = f"{NPHM_RESULTS_FOLDER}/{method}{folder_suffix}/mask_{fitting}.ply"
+            if not Path(mesh_path).exists():
+                mesh_path = f"{NPHM_RESULTS_FOLDER}/{method}{folder_suffix}/mesh_{fitting}.ply"
         # Need
         return trimesh.load(mesh_path, process=False)
 
@@ -126,8 +171,22 @@ def scaled_cmap(cmap_name: str, scale: float):
     cmap = plt.get_cmap(cmap_name)
     return lambda x: cmap(x * scale)
 
-
 if __name__ == '__main__':
+    # Supplemental Switch
+    assert not (USE_SINGLE_VIEW and USE_SUPPLEMENTAL), "Can only use one of USE_SUPPLEMENTAL and USE_SINGLE_VIEW"
+
+    if USE_SUPPLEMENTAL:
+        methods_order = SUPPLEMENTAL_METHODS_ORDER
+        error_mask_mesh_folder = SUPPLEMENTAL_ERROR_MASK_MESH_FOLDER
+        grid_line_x_adjustments = SUPPLEMENTAL_GRID_LINE_X_ADJUSTMENTS
+    elif USE_SINGLE_VIEW:
+        methods_order = SINGLE_VIEW_METHODS_ORDER
+        error_mask_mesh_folder = None
+        grid_line_x_adjustments = SINGLE_VIEW_GRID_LINE_X_ADJUSTMENTS
+    else:
+        methods_order = METHODS_ORDER
+        error_mask_mesh_folder = ERROR_MASK_MESH_FOLDER
+        grid_line_x_adjustments = GRID_LINE_X_ADJUSTMENTS
 
     fittings = [gt_scan.stem for gt_scan in Path(f"{NPHM_RESULTS_FOLDER}/GT").iterdir()]
     fittings = ['_'.join(fitting.split('_')[1:]) if fitting.startswith('mesh_') else fitting for fitting in fittings]
@@ -137,26 +196,48 @@ if __name__ == '__main__':
 
     plt.figure()
     nrows = len(fittings)
-    ncols = len(METHODS_ORDER)
+    ncols = len(methods_order)
 
     aspect_ratio = IMAGE_HEIGHT / IMAGE_WIDTH
     # width is divided into small column stripes. Small cells will be 2 stripes, wide cells will be 3 stripes
-    n_total_stripes = STRIPES_SMALL + 5 * STRIPES_WIDE  # All columns except point cloud have a small side column
-    stripe_width = (FIGURE_WIDTH * (1 - 5 * PADDING_X)) / n_total_stripes
+    n_total_stripes = STRIPES_SMALL + (ncols - 1) * STRIPES_WIDE  # All columns except point cloud have a small side column
+    stripe_width = (FIGURE_WIDTH * (1 - ((ncols - 1)) * PADDING_X)) / n_total_stripes
     padding_width = FIGURE_WIDTH * PADDING_X
 
     cell_width_small = STRIPES_SMALL * stripe_width
     cell_width_wide = STRIPES_WIDE * stripe_width
-    cell_height = aspect_ratio * cell_width_small
+    rendering_width = 2 * stripe_width
+    cell_height = aspect_ratio * rendering_width
     padding_height = cell_height * PADDING_Y
     figure_height = int(nrows * cell_height + (nrows - 1) * padding_height)
     global_offset_y = GLOBAL_OFFSET_Y * figure_height
+    figure_height = int(figure_height + global_offset_y)
 
     surface = cairo.ImageSurface(Format.ARGB32, FIGURE_WIDTH, figure_height)
     ctx = cairo.Context(surface)
 
+    # Draw lines
+    line_margin = (LINE_WIDTH_GRID - 1) / 2  # (0,0) -> 1,  (1, 1) -> 3, (2, 2) -> 5
+    ctx.set_source_rgb(0, 0, 0)
+    ctx.set_line_width(LINE_WIDTH_GRID)
+    ctx.move_to(line_margin, line_margin)
+    ctx.line_to(FIGURE_WIDTH, line_margin)
+    ctx.line_to(FIGURE_WIDTH, figure_height)
+    ctx.line_to(line_margin, figure_height)
+    ctx.line_to(line_margin, line_margin)
+    ctx.stroke()
+    for i_method in range(len(methods_order) - 1):
+        line_x = cell_width_small + i_method * cell_width_wide + grid_line_x_adjustments[i_method] * cell_width_wide
+        if i_method == COL_ERROR_BAR - 2:
+            ctx.move_to(line_x, COLOR_BAR_HEIGHT * cell_height)
+        else:
+            ctx.move_to(line_x, 0)
+        ctx.line_to(line_x, figure_height)
+        ctx.stroke()
+
+    # Draw rendered meshes, error masks and crop outs
     for i_fitting, fitting in enumerate(fittings):
-        for i_method, method in enumerate(METHODS_ORDER):
+        for i_method, method in enumerate(methods_order):
             mesh = load_mesh(method, fitting)
 
             p = pv.Plotter(off_screen=True)
@@ -211,8 +292,8 @@ if __name__ == '__main__':
                 errors = load_errors(method, fitting)
                 error_mask = load_error_mask(method, fitting)
 
-                if ERROR_MASK_MESH_FOLDER[i_method] is not None:
-                    mesh = load_mesh(method, fitting, ERROR_MASK_MESH_FOLDER[i_method])
+                if error_mask_mesh_folder is not None and error_mask_mesh_folder[i_method] is not None:
+                    mesh = load_mesh(method, fitting, error_mask_mesh_folder[i_method])
 
                 # Remove vertices AND faces that were filtered out during error calculation
                 # The error is not calculated on the back of the head and for the hair
@@ -230,10 +311,10 @@ if __name__ == '__main__':
             # Plot main mesh
             if i_method == 0:
                 center_x = cell_width_small / 2
-            elif i_method == len(METHODS_ORDER) - 1:
-                center_x = cell_width_small + 4 * cell_width_wide + cell_width_small / 2
+            elif i_method == len(methods_order) - 1:
+                center_x = cell_width_small + (ncols - 2) * cell_width_wide + rendering_width / 2
             else:
-                center_x = cell_width_small + (i_method - 1) * cell_width_wide + cell_width_small / 2
+                center_x = cell_width_small + (i_method - 1) * cell_width_wide + rendering_width / 2
             center_x += i_method * padding_width
             center_y = (i_fitting + 1) * cell_height - cell_height / 2 + (i_fitting) * padding_height + global_offset_y
 
@@ -241,7 +322,7 @@ if __name__ == '__main__':
                 center_x += stripe_width / 3  # Move pointcloud slightly more to the right
 
             center = Vec2(center_x, center_y)
-            size = Vec2(cell_width_small, cell_height)
+            size = Vec2(rendering_width, cell_height)
             draw_image(ctx, rendered_mesh, center, size)
 
             # For actual methods plot an error mesh and a crop out
@@ -274,42 +355,44 @@ if __name__ == '__main__':
                 crop_out_size = size
 
                 # Get original image crop positions
-                shrink_factor = cell_width_small / IMAGE_WIDTH  # Images in global coordinates are smaller than renderings
-                crop_x_global = center_x - 1 / 4 * stripe_width - cell_width_small + crop_x * shrink_factor
+                shrink_factor = rendering_width / IMAGE_WIDTH  # Images in global coordinates are smaller than renderings
+                crop_x_global = center_x - 1 / 4 * stripe_width - rendering_width + crop_x * shrink_factor
                 crop_y_global = center_y - 3 / 4 * cell_height + crop_y * shrink_factor
                 crop_size_global = crop_size * shrink_factor
 
                 # Draw rectangle around source crop position
                 ctx.set_source_rgb(*LINE_COLOR[::-1])
+                ctx.set_line_width(LINE_WIDTH_CROPS)
                 ctx.rectangle(crop_x_global, crop_y_global, crop_size_global, crop_size_global)
                 ctx.stroke()
 
                 # Draw lines
-                ctx.save()
-                ctx.set_source_rgb(*LINE_COLOR[::-1])
-
-                ctx.move_to(crop_x_global, crop_y_global)
-                ctx.line_to(crop_out_rect_x, crop_out_rect_y)
-
-                ctx.move_to(crop_x_global + crop_size_global, crop_y_global)
-                ctx.line_to(crop_out_rect_x + crop_out_size.x, crop_out_rect_y)
-
-                ctx.move_to(crop_x_global, crop_y_global + crop_size_global)
-                ctx.line_to(crop_out_rect_x, crop_out_rect_y + crop_out_size.y)
-
-                ctx.move_to(crop_x_global + crop_size_global, crop_y_global + crop_size_global)
-                ctx.line_to(crop_out_rect_x + crop_out_size.x, crop_out_rect_y + crop_out_size.y)
-
-                ctx.set_line_width(1)
-                ctx.set_dash([4, 6])
-                ctx.stroke()
-                ctx.restore()
+                # ctx.save()
+                # ctx.set_source_rgb(*LINE_COLOR[::-1])
+                #
+                # ctx.move_to(crop_x_global, crop_y_global)
+                # ctx.line_to(crop_out_rect_x, crop_out_rect_y)
+                #
+                # ctx.move_to(crop_x_global + crop_size_global, crop_y_global)
+                # ctx.line_to(crop_out_rect_x + crop_out_size.x, crop_out_rect_y)
+                #
+                # ctx.move_to(crop_x_global, crop_y_global + crop_size_global)
+                # ctx.line_to(crop_out_rect_x, crop_out_rect_y + crop_out_size.y)
+                #
+                # ctx.move_to(crop_x_global + crop_size_global, crop_y_global + crop_size_global)
+                # ctx.line_to(crop_out_rect_x + crop_out_size.x, crop_out_rect_y + crop_out_size.y)
+                #
+                # ctx.set_line_width(LINE_WIDTH_CROPS)
+                # ctx.set_dash([4, 6])
+                # ctx.stroke()
+                # ctx.restore()
 
                 # Draw cropout
                 draw_image(ctx, crop_out, center, size)
 
                 # Draw rectangle around cropout
                 ctx.set_source_rgb(*LINE_COLOR[::-1])
+                ctx.set_line_width(LINE_WIDTH_CROPS)
                 ctx.rectangle(crop_out_rect_x, crop_out_rect_y, crop_out_size.x, crop_out_size.y)
                 ctx.stroke()
 
@@ -317,13 +400,24 @@ if __name__ == '__main__':
             # plt.imshow(rendered_img)
 
     rendered_color_bar = render_color_bar()
-    center_x = cell_width_small + 4 * cell_width_wide + 4 * padding_width + stripe_width / 5
+    center_x = cell_width_small + (COL_ERROR_BAR - 2) * cell_width_wide + (COL_ERROR_BAR - 2) * padding_width + stripe_width / 8
     center_y = 0.9 * cell_height / 3 + global_offset_y
-    draw_image(ctx, rendered_color_bar, Vec2(center_x, center_y), Vec2(stripe_width, 0.9 * cell_height / 2))
+    draw_image(ctx, rendered_color_bar, Vec2(center_x, center_y), Vec2(stripe_width, COLOR_BAR_HEIGHT * cell_height))
 
     figure = to_image(surface)
-    save_img(figure, f"{NPHM_RESULTS_FOLDER}/results_comparison_identity.png")
-    save_img(figure[:, :, :3], f"{NPHM_RESULTS_FOLDER}/results_comparison_identity.jpg")
+    figure_name = "results_comparison_identity"
+    if USE_SUPPLEMENTAL:
+        figure_name = f"{figure_name}_supplemental"
+    elif USE_SINGLE_VIEW:
+        figure_name = f"{figure_name}_single_view"
+    save_img(figure, f"{NPHM_RESULTS_FOLDER}/{figure_name}.png")
+
+    # Save jpeg with alpha channel replaced with white
+    figure_jpeg = figure / 255.
+    alpha = figure_jpeg[:, :, [3]]
+    figure_jpeg = alpha * figure_jpeg[:, :, :3] + (1 - alpha)
+    figure_jpeg = (figure_jpeg * 255).astype(np.uint8)
+    save_img(figure_jpeg, f"{NPHM_RESULTS_FOLDER}/{figure_name}.jpg", jpg_quality=95)
 
     plt.figure()
     plt.imshow(figure)

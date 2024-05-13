@@ -21,22 +21,31 @@ NEUTRAL_SCAN_ID_MOUTH_CLOSED = 0  # for FLAME, BFM
 NEUTRAL_SCAN_NAME = "s_steffen_e"
 
 NPHM_RESULTS_FOLDER = f"{NPHM_DATA_PATH}/results_expression"
-METHODS_ORDER = ['PC', 'BFM', 'FLAME', 'NPM', 'NPHM', 'GT']
+METHODS_ORDER = ['PC', 'FLAME', 'localPCA', 'imface_star', 'NPM', 'NPHM', 'GT']
+GRID_LINE_X_ADJUSTMENTS = [0.05, 0.02, 0.05, 0.02, 0.02, 0]  # Manual adjustments for vertical grid lines. Measured in percentage of cell width
+
+SUPPLEMENTAL_METHODS_ORDER = ['PC', 'BFM', 'globalPCA', 'ImFace', 'imface_star', 'NPHM', 'GT']
+SUPPLEMENTAL_GRID_LINE_X_ADJUSTMENTS = [0.05, 0.02, 0.02, 0.02, 0.02, 0]
 
 USE_BLENDER = True
+USE_SUPPLEMENTAL = True
+SHOW_NEUTRAL_SCANS = False
 
 RESOLUTION = 2048
 IMAGE_WIDTH = int(0.6 * RESOLUTION)
 IMAGE_HEIGHT = RESOLUTION
 
 FIGURE_WIDTH = 2048
-STRIPES_SMALL = 2
-STRIPES_WIDE = 3
-PADDING_X = 0.02  # Padding between columns
+STRIPES_SMALL = 1.5  # Relative width of first column (pointcloud observation)
+STRIPES_WIDE = 3  # Relative width of all other cells
+PADDING_X = 0  # Padding between columns
 PADDING_Y = -0.15  # Padding between rows
-GLOBAL_OFFSET_Y = 0  # -0.05  # Move everything up a bit
+GLOBAL_OFFSET_Y = -0.03  # -0.05  # Move everything up a bit
 
-CHOSEN_FITTINGS = [1, 6] #, 15, 18]
+# CHOSEN_FITTINGS = [1, 6, 18] #15] #, 18]
+# CHOSEN_FITTINGS = [f"s_steffen_e_{expression_id}" for expression_id in [1, 15, 5, 9, 4, 8]]
+CHOSEN_FITTINGS = [f"s_steffen_e_{expression_id}" for expression_id in [15, 9, 4]]
+# CHOSEN_FITTINGS = [f"s_id88_e_{expression_id}" for expression_id in [10, 2, 8, 20, 19, 14]]
 
 # [x, y, size] in percentage of render image width/height
 CROP_EYE_LEFT = [0.27, 0.4, 0.2]
@@ -46,18 +55,37 @@ CROP_MOUTH_LEFT = [0.3, 0.55, 0.2]
 CROP_MOUTH_LEFT_LARGE = [0.35, 0.57, 0.25]
 CROP_MOUTH_RIGHT_LARGE = [0.4, 0.57, 0.25]
 CROP_CHIN = [0.36, 0.57, 0.28]
+CROP_CHEEK_RIGHT = [0.52, 0.52, 0.2]
 
+# x, y, size in percentage of render image width/height
+# Steffen
 CROPS = [
-    CROP_MOUTH_LEFT,  # x, y, size in percentage of render image width/height
+    # CROP_CHEEK_RIGHT,
     CROP_CHIN,
-    CROP_MOUTH_LEFT_LARGE,
-    CROP_MOUTH_RIGHT_LARGE
+    # CROP_CHIN,
+    CROP_MOUTH_RIGHT_LARGE,
+    CROP_CHIN,
+    # CROP_EYE_LEFT,
 ]
+# id88
+# CROPS = [
+#     CROP_CHEEK_RIGHT,
+#     CROP_CHIN,
+#     CROP_CHIN,
+#     CROP_MOUTH_RIGHT_LARGE,
+#     CROP_EYE_LEFT,
+#     CROP_CHEEK_RIGHT,
+# ]
 ERROR_NORMALIZATION = 0.020
 LINE_COLOR = (0, 0, 1)
+LINE_WIDTH_GRID = 2
+LINE_WIDTH_CROPS = 1.5
 CMAP_OFFSET = 0.05  # Ignore first percentages of cmap to get lighter colors for better visual inspection
 CROPOUT_SIZE = 1.4
 ERROR_MASK_SIZE = 1.2
+COL_ERROR_BAR = 3  # In which column the error bar should be plotted
+COLOR_BAR_HEIGHT = 0.9 * 0.5  # Percentage of cell height
+COLOR_BAR_Y_OFFSET = 0.05  # Percentage of cell height
 
 def load_mesh(method: str, fitting: str) -> Union[trimesh.Trimesh, np.ndarray]:
     if fitting == 'NEUTRAL':
@@ -81,6 +109,8 @@ def load_mesh(method: str, fitting: str) -> Union[trimesh.Trimesh, np.ndarray]:
                 mesh_path = f"{NPHM_RESULTS_FOLDER}/{method}/mesh_{fitting}.ply"
         else:
             mesh_path = f"{NPHM_RESULTS_FOLDER}/{method}/mask_{fitting}.ply"
+            if not Path(mesh_path).exists():
+                mesh_path = f"{NPHM_RESULTS_FOLDER}/{method}/mesh_{fitting}.ply"
         # Need
         return trimesh.load(mesh_path, process=False)
 
@@ -135,34 +165,67 @@ def scaled_cmap(cmap_name: str, scale: float):
 
 
 if __name__ == '__main__':
+    methods_order = SUPPLEMENTAL_METHODS_ORDER if USE_SUPPLEMENTAL else METHODS_ORDER
+    grid_line_x_adjustments = SUPPLEMENTAL_GRID_LINE_X_ADJUSTMENTS if USE_SUPPLEMENTAL else GRID_LINE_X_ADJUSTMENTS
 
-    fittings = [gt_scan.stem for gt_scan in Path(f"{NPHM_RESULTS_FOLDER}/GT").iterdir()]
-    fittings = ['_'.join(fitting.split('_')[1:]) if fitting.startswith('mesh_') else fitting for fitting in fittings]
-    fittings = [fitting for i_fitting, fitting in enumerate(fittings) if i_fitting in CHOSEN_FITTINGS]
-    fittings.insert(0, 'NEUTRAL')  # First row is neutral expressions
+    # fittings = [gt_scan.stem for gt_scan in Path(f"{NPHM_RESULTS_FOLDER}/GT").iterdir()]
+    # fittings = ['_'.join(fitting.split('_')[1:]) if fitting.startswith('mesh_') else fitting for fitting in fittings]
+    # fittings = [fitting for i_fitting, fitting in enumerate(fittings) if i_fitting in CHOSEN_FITTINGS]
+    fittings = CHOSEN_FITTINGS.copy()
+
+    if SHOW_NEUTRAL_SCANS:
+        fittings.insert(0, 'NEUTRAL')  # First row is neutral expressions
 
     plt.figure()
     nrows = len(fittings)
-    ncols = len(METHODS_ORDER)
+    ncols = len(methods_order)
 
     aspect_ratio = IMAGE_HEIGHT / IMAGE_WIDTH
     # width is divided into small column stripes. Small cells will be 2 stripes, wide cells will be 3 stripes
-    n_total_stripes = STRIPES_SMALL + 5 * STRIPES_WIDE  # All columns except point cloud have a small side column
-    stripe_width = (FIGURE_WIDTH * (1 - 5 * PADDING_X)) / n_total_stripes
+    n_total_stripes = STRIPES_SMALL + (
+                ncols - 1) * STRIPES_WIDE  # All columns except point cloud have a small side column
+    stripe_width = (FIGURE_WIDTH * (1 - ((ncols - 1)) * PADDING_X)) / n_total_stripes
     padding_width = FIGURE_WIDTH * PADDING_X
 
     cell_width_small = STRIPES_SMALL * stripe_width
     cell_width_wide = STRIPES_WIDE * stripe_width
-    cell_height = aspect_ratio * cell_width_small
+    rendering_width = 2 * stripe_width
+    cell_height = aspect_ratio * rendering_width
     padding_height = cell_height * PADDING_Y
     figure_height = int(nrows * cell_height + (nrows - 1) * padding_height)
     global_offset_y = GLOBAL_OFFSET_Y * figure_height
+    figure_height = int(figure_height + global_offset_y)
 
     surface = cairo.ImageSurface(Format.ARGB32, FIGURE_WIDTH, figure_height)
     ctx = cairo.Context(surface)
 
+    # Draw lines
+    line_margin = (LINE_WIDTH_GRID - 1) / 2  # (0,0) -> 1,  (1, 1) -> 3, (2, 2) -> 5
+    ctx.set_source_rgb(0, 0, 0)
+    ctx.set_line_width(LINE_WIDTH_GRID)
+    ctx.move_to(line_margin, line_margin)
+    ctx.line_to(FIGURE_WIDTH, line_margin)
+    ctx.line_to(FIGURE_WIDTH, figure_height)
+    ctx.line_to(line_margin, figure_height)
+    ctx.line_to(line_margin, line_margin)
+    ctx.stroke()
+    for i_method in range(len(methods_order) - 1):
+        line_x = cell_width_small + i_method * cell_width_wide + grid_line_x_adjustments[i_method] * cell_width_wide
+        if i_method == COL_ERROR_BAR - 2:
+            if SHOW_NEUTRAL_SCANS:
+                ctx.move_to(line_x, 0)
+                ctx.line_to(line_x, global_offset_y + cell_height + padding_height / 2 + COLOR_BAR_Y_OFFSET * cell_height)
+
+                ctx.move_to(line_x, global_offset_y + COLOR_BAR_HEIGHT * cell_height + cell_height + padding_height / 2 + COLOR_BAR_Y_OFFSET * cell_height)
+            else:
+                ctx.move_to(line_x, global_offset_y + COLOR_BAR_HEIGHT * cell_height + COLOR_BAR_Y_OFFSET * cell_height)
+        else:
+            ctx.move_to(line_x, 0)
+        ctx.line_to(line_x, figure_height)
+        ctx.stroke()
+
     for i_fitting, fitting in enumerate(fittings):
-        for i_method, method in enumerate(METHODS_ORDER):
+        for i_method, method in enumerate(methods_order):
 
             # Don't show GT and pointcloud for neutral expression
             if fitting == 'NEUTRAL':
@@ -240,10 +303,10 @@ if __name__ == '__main__':
             if not fitting == 'NEUTRAL' or method not in {'PC', 'GT'}:
                 if i_method == 0:
                     center_x = cell_width_small / 2
-                elif i_method == len(METHODS_ORDER) - 1:
-                    center_x = cell_width_small + 4 * cell_width_wide + cell_width_small / 2
+                elif i_method == len(methods_order) - 1:
+                    center_x = cell_width_small + (ncols - 2) * cell_width_wide + rendering_width / 2
                 else:
-                    center_x = cell_width_small + (i_method - 1) * cell_width_wide + cell_width_small / 2
+                    center_x = cell_width_small + (i_method - 1) * cell_width_wide + rendering_width / 2
                 center_x += i_method * padding_width
                 center_y = (i_fitting + 1) * cell_height - cell_height / 2 + (i_fitting) * padding_height + global_offset_y
 
@@ -251,7 +314,7 @@ if __name__ == '__main__':
                     center_x += stripe_width / 3  # Move pointcloud slightly more to the right
 
                 center = Vec2(center_x, center_y)
-                size = Vec2(cell_width_small, cell_height)
+                size = Vec2(rendering_width, cell_height)
                 draw_image(ctx, rendered_mesh, center, size)
 
             # For actual methods plot an error mesh and a crop out
@@ -269,7 +332,10 @@ if __name__ == '__main__':
                 center_y += 0.05 * cell_height  # Add a little padding between error mask and cropout
 
                 # Get crop outs
-                crop_x, crop_y, crop_size = CROPS[i_fitting - 1]
+                if SHOW_NEUTRAL_SCANS:
+                    crop_x, crop_y, crop_size = CROPS[i_fitting - 1]
+                else:
+                    crop_x, crop_y, crop_size = CROPS[i_fitting]
                 crop_x = int(rendered_mesh.shape[1] * crop_x)
                 crop_y = int(rendered_mesh.shape[0] * crop_y)
                 crop_size = int(rendered_mesh.shape[1] * crop_size)
@@ -284,42 +350,44 @@ if __name__ == '__main__':
                 crop_out_size = size
 
                 # Get original image crop positions
-                shrink_factor = cell_width_small / IMAGE_WIDTH  # Images in global coordinates are smaller than renderings
-                crop_x_global = center_x - 1 / 4 * stripe_width - cell_width_small + crop_x * shrink_factor
+                shrink_factor = rendering_width / IMAGE_WIDTH  # Images in global coordinates are smaller than renderings
+                crop_x_global = center_x - 1 / 4 * stripe_width - rendering_width + crop_x * shrink_factor
                 crop_y_global = center_y - 3 / 4 * cell_height + crop_y * shrink_factor
                 crop_size_global = crop_size * shrink_factor
 
                 # Draw rectangle around source crop position
                 ctx.set_source_rgb(*LINE_COLOR[::-1])
+                ctx.set_line_width(LINE_WIDTH_CROPS)
                 ctx.rectangle(crop_x_global, crop_y_global, crop_size_global, crop_size_global)
                 ctx.stroke()
 
-                # Draw lines
-                ctx.save()
-                ctx.set_source_rgb(*LINE_COLOR[::-1])
-
-                ctx.move_to(crop_x_global, crop_y_global)
-                ctx.line_to(crop_out_rect_x, crop_out_rect_y)
-
-                ctx.move_to(crop_x_global + crop_size_global, crop_y_global)
-                ctx.line_to(crop_out_rect_x + crop_out_size.x, crop_out_rect_y)
-
-                ctx.move_to(crop_x_global, crop_y_global + crop_size_global)
-                ctx.line_to(crop_out_rect_x, crop_out_rect_y + crop_out_size.y)
-
-                ctx.move_to(crop_x_global + crop_size_global, crop_y_global + crop_size_global)
-                ctx.line_to(crop_out_rect_x + crop_out_size.x, crop_out_rect_y + crop_out_size.y)
-
-                ctx.set_line_width(1)
-                ctx.set_dash([4, 6])
-                ctx.stroke()
-                ctx.restore()
+                # # Draw lines
+                # ctx.save()
+                # ctx.set_source_rgb(*LINE_COLOR[::-1])
+                #
+                # ctx.move_to(crop_x_global, crop_y_global)
+                # ctx.line_to(crop_out_rect_x, crop_out_rect_y)
+                #
+                # ctx.move_to(crop_x_global + crop_size_global, crop_y_global)
+                # ctx.line_to(crop_out_rect_x + crop_out_size.x, crop_out_rect_y)
+                #
+                # ctx.move_to(crop_x_global, crop_y_global + crop_size_global)
+                # ctx.line_to(crop_out_rect_x, crop_out_rect_y + crop_out_size.y)
+                #
+                # ctx.move_to(crop_x_global + crop_size_global, crop_y_global + crop_size_global)
+                # ctx.line_to(crop_out_rect_x + crop_out_size.x, crop_out_rect_y + crop_out_size.y)
+                #
+                # ctx.set_line_width(1)
+                # ctx.set_dash([4, 6])
+                # ctx.stroke()
+                # ctx.restore()
 
                 # Draw cropout
                 draw_image(ctx, crop_out, center, size)
 
                 # Draw rectangle around cropout
                 ctx.set_source_rgb(*LINE_COLOR[::-1])
+                ctx.set_line_width(LINE_WIDTH_CROPS)
                 ctx.rectangle(crop_out_rect_x, crop_out_rect_y, crop_out_size.x, crop_out_size.y)
                 ctx.stroke()
 
@@ -327,16 +395,24 @@ if __name__ == '__main__':
             # plt.imshow(rendered_img)
 
     rendered_color_bar = render_color_bar()
-    center_x = cell_width_small + 4 * cell_width_wide + 4 * padding_width + stripe_width / 5
-    center_y = cell_height + padding_height + 0.9 * cell_height / 3 + global_offset_y
-    draw_image(ctx, rendered_color_bar, Vec2(center_x, center_y), Vec2(stripe_width, 0.9 * cell_height / 2))
+    center_x = cell_width_small + (COL_ERROR_BAR - 2) * cell_width_wide +(COL_ERROR_BAR - 2) * padding_width + stripe_width / 8
+    if SHOW_NEUTRAL_SCANS:
+        center_y = cell_height + padding_height + 0.9 * cell_height / 3 + global_offset_y + COLOR_BAR_Y_OFFSET * cell_height
+    else:
+        center_y = COLOR_BAR_HEIGHT * cell_height / 2 + global_offset_y + COLOR_BAR_Y_OFFSET * cell_height
+    draw_image(ctx, rendered_color_bar, Vec2(center_x, center_y), Vec2(stripe_width, COLOR_BAR_HEIGHT * cell_height))
 
     figure = to_image(surface)
-    save_img(figure, f"{NPHM_RESULTS_FOLDER}/results_comparison_expression.png")
+    figure_name = "results_comparison_expression"
+    if USE_SUPPLEMENTAL:
+        figure_name += "_supplemental"
+    save_img(figure, f"{NPHM_RESULTS_FOLDER}/{figure_name}.png")
+
+    # Save jpeg with alpha channel replaced with white
     figure_jpg = figure[:, :, :3]
     alpha = figure[:, :, [3]] / 255
     figure_jpg = alpha * figure_jpg + (1 - alpha) * (np.ones_like(figure_jpg) * 255)
-    save_img(figure_jpg.astype(np.uint8), f"{NPHM_RESULTS_FOLDER}/results_comparison_expression.jpg")
+    save_img(figure_jpg.astype(np.uint8), f"{NPHM_RESULTS_FOLDER}/{figure_name}.jpg", jpg_quality=95)
 
     plt.figure()
     plt.imshow(figure)

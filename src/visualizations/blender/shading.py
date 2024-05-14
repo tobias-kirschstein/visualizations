@@ -8,6 +8,7 @@ from bpy.types import Object, Node, Material
 def create_principled_bsdf_material(
         name: str,
         color: Optional[Tuple[float, float, float]] = None,
+        use_vertex_color: bool = False,
         metallic: Optional[float] = None,
         roughness: Optional[float] = None) -> Material:
     # if isinstance(obj, Entity):
@@ -26,7 +27,10 @@ def create_principled_bsdf_material(
     links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
 
     # Change color
-    if color is not None:
+    if use_vertex_color:
+        vertex_color_node = nodes.new(type="ShaderNodeVertexColor")
+        links.new(vertex_color_node.outputs['Color'],  bsdf_node.inputs['Base Color'])
+    elif color is not None:
         bsdf_node.inputs[0].default_value = (color[0], color[1], color[2], 1)
 
     # Change metallic

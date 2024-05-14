@@ -37,6 +37,7 @@ def main(input_path: Positional[str],
          color_r: float = 0.8,
          color_g: float = 0.9,
          color_b: float = 1,
+         use_vertex_colors: bool = False,
          fov: float = 0.6911110281944275,
          use_orthographic_cam: bool = True,
          mirror_light_x: bool= False,
@@ -81,11 +82,14 @@ def main(input_path: Positional[str],
         Creates duplicate(s) of the light source(s) that is mirrored in z-direction (flipped at the x-y plane)
 
     :param color_r:
-        red channel for mesh
+        red channel for mesh. Only used if use_vertex_colors=False.
     :param color_g:
-        green channel for mesh
+        green channel for mesh. Only used if use_vertex_colors=False.
     :param color_b:
-        blue channel for mesh
+        blue channel for mesh. Only used if use_vertex_colors=False.
+    :param use_vertex_colors:
+        If use_vertex_colors=True, the mesh will be rendered using the vertex colors from the .ply
+
     :return:
     """
 
@@ -159,7 +163,8 @@ def main(input_path: Positional[str],
 
     material = create_principled_bsdf_material("metallic",
                                                color=(color_r, color_g, color_b),
-                                               metallic=0.9, roughness=0.7)
+                                               metallic=0.9, roughness=0.7,
+                                               use_vertex_color=use_vertex_colors)
     obj = import_ply(input_path, scale=scale)
     obj.location = (location_x, location_y, location_z)
 

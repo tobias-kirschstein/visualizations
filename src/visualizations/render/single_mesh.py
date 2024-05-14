@@ -31,6 +31,7 @@ def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],
                        mirror_light_x: bool = False,
                        mirror_light_z: bool = False,
                        color: Tuple[float, float, float] = (0.8, 0.9, 1),
+                       use_vertex_colors: bool = False,
                        use_orthographic_cam: bool = True,
                        fov: float = 0.6911110281944275
                        ) -> np.ndarray:
@@ -47,6 +48,7 @@ def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],
     try:
         if isinstance(mesh_obj, str) or isinstance(mesh_obj, Path):
             tmp_input_file = str(mesh_obj)
+            assert Path(tmp_input_file).exists(), f"{tmp_input_file} does not exist"
             delete_temp_input = False
         else:
             scene = trimesh.Scene()
@@ -75,6 +77,9 @@ def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],
                          "--color_b", str(color[2]),
                          "--fov", str(fov)
                          ]
+        if use_vertex_colors:
+            cmd_arguments.append("--use_vertex_colors")
+
         if not use_orthographic_cam:
             cmd_arguments.append("--no-use-orthographic-cam")
 
@@ -84,8 +89,8 @@ def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],
         if mirror_light_z:
             cmd_arguments.append("--mirror_light_z")
 
-        blenderproc_cmd = subprocess.Popen(cmd_arguments)
-        blenderproc_cmd.communicate()
+        blenderproc_cmd = subprocess.Popen(cmd_arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = blenderproc_cmd.communicate()
 
         rendered_img = load_img(tmp_output_file)
 

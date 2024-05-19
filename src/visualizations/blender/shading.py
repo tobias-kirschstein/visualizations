@@ -9,6 +9,7 @@ def create_principled_bsdf_material(
         name: str,
         color: Optional[Tuple[float, float, float]] = None,
         use_vertex_color: bool = False,
+        use_vertex_alpha: bool = False,
         metallic: Optional[float] = None,
         roughness: Optional[float] = None) -> Material:
     # if isinstance(obj, Entity):
@@ -24,14 +25,27 @@ def create_principled_bsdf_material(
     output_node = nodes.new(type='ShaderNodeOutputMaterial')
     bsdf_node = nodes.new(type='ShaderNodeBsdfPrincipled')
 
-    links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
-
     # Change color
+    vertex_color_node = None
     if use_vertex_color:
         vertex_color_node = nodes.new(type="ShaderNodeVertexColor")
         links.new(vertex_color_node.outputs['Color'],  bsdf_node.inputs['Base Color'])
     elif color is not None:
-        bsdf_node.inputs[0].default_value = (color[0], color[1], color[2], 1)
+        bsdf_node.inputs['Base Color'].default_value = (color[0], color[1], color[2], 1)
+
+    if use_vertex_alpha:
+        material.blend_method = 'BLEND'
+        if vertex_color_node is None:
+            vertex_color_node = nodes.new(type="ShaderNodeVertexColor")
+        mix_shader_node = nodes.new(type='ShaderNodeMixShader')
+        transparent_bsdf_node = nodes.new(type='ShaderNodeBsdfTransparent')
+
+        links.new(vertex_color_node.outputs['Alpha'], mix_shader_node.inputs['Fac'])
+        links.new(transparent_bsdf_node.outputs['BSDF'], mix_shader_node.inputs[1])
+        links.new(bsdf_node.outputs['BSDF'], mix_shader_node.inputs[2])
+        links.new(mix_shader_node.outputs['Shader'], output_node.inputs['Surface'])
+    else:
+        links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
 
     # Change metallic
     if metallic is not None:

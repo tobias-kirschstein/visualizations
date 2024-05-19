@@ -36,6 +36,8 @@ def draw_image(ctx: cairo.Context,
         # image = np.concatenate([image[:, :, [3]], image[:, :, :3]], axis=2)
         image = np.array(image)
 
+    image = np.ascontiguousarray(image)  # image needs to be contiguous
+
     # TODO: Ensure that transparent pixels have all 0s. Otherwise pycairo fucks up alpha blending
     image_surface = cairo.ImageSurface.create_for_data(
         image, format, image_width, image_height)

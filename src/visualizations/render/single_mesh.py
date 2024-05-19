@@ -6,6 +6,8 @@ from typing import Optional, Union, Tuple
 
 import numpy as np
 import trimesh
+from dreifus.camera import CameraCoordinateConvention, PoseType
+from dreifus.matrix import Pose
 from elias.util.io import load_img
 
 from visualizations.env import REPO_ROOT
@@ -32,8 +34,10 @@ def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],
                        mirror_light_z: bool = False,
                        color: Tuple[float, float, float] = (0.8, 0.9, 1),
                        use_vertex_colors: bool = False,
-                       use_orthographic_cam: bool = True,
-                       fov: float = 0.6911110281944275
+                       use_vertex_alpha: bool = False,
+                       use_orthographic_cam: bool = False,
+                       fov: float = 0.6911110281944275,
+                       cam_pose: Optional[Pose] = None,
                        ) -> np.ndarray:
     # Could do some complicated piping here, but no sure how to create mesh obj in bpy from binary .ply
     # blenderproc_cmd = subprocess.Popen(["blenderproc", "run", f"{REPO_ROOT}/scripts/render/single_mesh.py", "pipe", "out.img"], stdin=subprocess.PIPE)
@@ -41,7 +45,12 @@ def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],
     # result = blenderproc_cmd.communicate()
 
     random_id = uuid.uuid4().hex
-    tmp_input_file = f"{REPO_ROOT}/scripts/render/tmp_input_{random_id}.ply"
+    if use_vertex_alpha:
+        # .obj is faster, but vertex alpha does not work with .obj
+        tmp_input_file = f"{REPO_ROOT}/scripts/render/tmp_input_{random_id}.ply"
+    else:
+        tmp_input_file = f"{REPO_ROOT}/scripts/render/tmp_input_{random_id}.obj"
+
     tmp_output_file = f"{REPO_ROOT}/scripts/render/tmp_output_{random_id}.png"
 
     delete_temp_input = True
@@ -80,6 +89,9 @@ def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],
         if use_vertex_colors:
             cmd_arguments.append("--use_vertex_colors")
 
+        if use_vertex_alpha:
+            cmd_arguments.append("--use_vertex_alpha")
+
         if not use_orthographic_cam:
             cmd_arguments.append("--no-use-orthographic-cam")
 
@@ -89,9 +101,27 @@ def render_single_mesh(mesh_obj: Union[str, Path, trimesh.Trimesh],
         if mirror_light_z:
             cmd_arguments.append("--mirror_light_z")
 
+        if cam_pose is not None:
+            cam_pose = cam_pose.change_pose_type(PoseType.CAM_2_WORLD, inplace=False)
+            cam_pose = cam_pose.change_camera_coordinate_convention(CameraCoordinateConvention.OPEN_GL, inplace=False)
+            cam_position = cam_pose.get_translation()
+            cam_euler = cam_pose.get_euler_angles('xyz')
+            cmd_arguments.extend([
+                "--cam_translation_x", f"{cam_position.x: 0.9f}",
+                "--cam_translation_y", f"{cam_position.y: 0.9f}",
+                "--cam_translation_z", f"{cam_position.z: 0.9f}",
+                "--cam_euler_x", f"{cam_euler.x: 0.9f}",
+                "--cam_euler_y", f"{cam_euler.y: 0.9f}",
+                "--cam_euler_z", f"{cam_euler.z: 0.9f}",
+            ])
+
         blenderproc_cmd = subprocess.Popen(cmd_arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = blenderproc_cmd.communicate()
 
+        if not Path(tmp_output_file).exists():
+            print("RENDERING FAILED")
+            print(out.decode())
+            print(err.decode())
         rendered_img = load_img(tmp_output_file)
 
     except KeyboardInterrupt as e:

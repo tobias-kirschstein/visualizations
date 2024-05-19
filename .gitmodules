@@ -1,0 +1,6 @@
+[submodule "blender-ply-import"]
+	path = blender-ply-import
+	url = git@github.com:paulmelis/blender-ply-import.git
+[submodule "submodules"]
+	path = submodules
+	url = git@github.com:paulmelis/blender-ply-import.git

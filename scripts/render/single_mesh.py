@@ -2,7 +2,7 @@ import blenderproc as bproc
 # bproc import has to stay on top!
 import numpy as np
 import tyro
-
+from pathlib import Path
 from elias.util import ensure_directory_exists_for_file
 from elias.util.io import save_img
 from tyro.conf import Positional
@@ -26,6 +26,12 @@ def main(input_path: Positional[str],
          image_height: int = 1024,
          camera_distance: float = 3.,
          angle: float = 0,
+         cam_euler_x: Optional[float] = None,
+         cam_euler_y: Optional[float] = None,
+         cam_euler_z: Optional[float] = None,
+         cam_translation_x: Optional[float] = None,
+         cam_translation_y: Optional[float] = None,
+         cam_translation_z: Optional[float] = None,
          crop_y_min: Optional[float] = None,
          scale: Optional[Union[float, str]] = None,
          location_x: float = 0,
@@ -38,6 +44,7 @@ def main(input_path: Positional[str],
          color_g: float = 0.9,
          color_b: float = 1,
          use_vertex_colors: bool = False,
+         use_vertex_alpha: bool = False,
          fov: float = 0.6911110281944275,
          use_orthographic_cam: bool = True,
          mirror_light_x: bool= False,
@@ -89,6 +96,8 @@ def main(input_path: Positional[str],
         blue channel for mesh. Only used if use_vertex_colors=False.
     :param use_vertex_colors:
         If use_vertex_colors=True, the mesh will be rendered using the vertex colors from the .ply
+    :param use_vertex_alpha:
+        If specified, the mesh will be transparent in areas where the 4-th channel of the vertex color attribute has small values
 
     :return:
     """
@@ -117,10 +126,18 @@ def main(input_path: Positional[str],
     # Assume y is up-direction
     if use_orthographic_cam:
         bpy.context.scene.camera.data.type = "ORTHO"
-    cam_z = camera_distance * cos(angle)
-    cam_x = camera_distance * sin(angle)
-    cam_to_world.move(x=cam_x, z=cam_z)
-    cam_to_world.rotate_euler('xyz', euler_y=angle)
+    if cam_translation_x is None and cam_translation_y is None and cam_translation_z is None:
+        cam_z = camera_distance * cos(angle)
+        cam_x = camera_distance * sin(angle)
+        cam_to_world.move(x=cam_x, z=cam_z)
+    else:
+        cam_to_world.move(x=cam_translation_x or 0, y=cam_translation_y or 0, z=cam_translation_z or 0)
+
+    if cam_euler_x is None and cam_euler_y is None and cam_euler_z is None:
+        cam_to_world.rotate_euler('xyz', euler_y=angle)
+    else:
+        cam_to_world.rotate_euler('xyz', euler_x=cam_euler_x or 0, euler_y=cam_euler_y or 0, euler_z=cam_euler_z or 0)
+
     bproc.camera.set_resolution(image_width, image_height)
     bproc.camera.set_intrinsics_from_blender_params(fov, lens_unit='FOV')
 
@@ -164,8 +181,22 @@ def main(input_path: Positional[str],
     material = create_principled_bsdf_material("metallic",
                                                color=(color_r, color_g, color_b),
                                                metallic=0.9, roughness=0.7,
-                                               use_vertex_color=use_vertex_colors)
-    obj = import_ply(input_path, scale=scale)
+                                               use_vertex_color=use_vertex_colors,
+                                               use_vertex_alpha=use_vertex_alpha)
+    # obj = blender_readply(input_path, scale=scale)
+    # obj = import_ply(input_path, scale=scale)
+
+    if Path(input_path).suffix == '.obj':
+        bproc.loader.load_obj(input_path, forward_axis='Y', up_axis='Z')  # Blender does some weird coordinate shuffling with .obj imports. Correct it here
+        obj = bpy.context.active_object
+    else:
+        bproc.loader.load_obj(input_path)
+        obj = bpy.context.active_object
+        obj.data.materials.clear()  # load_obj() creates some default material that we do not need
+
+    if scale is not None:
+        bpy.ops.transform.resize(value=(scale, scale, scale))
+
     obj.location = (location_x, location_y, location_z)
 
     if crop_y_min is not None:
